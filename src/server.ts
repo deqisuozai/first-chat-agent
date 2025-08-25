@@ -10,12 +10,14 @@ import {
   type StreamTextOnFinishCallback,
   type ToolSet
 } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { createWorkersAI } from "workers-ai-provider";
 import { processToolCalls } from "./utils";
 import { tools, executions } from "./tools";
 // import { env } from "cloudflare:workers";
 
-const model = openai("gpt-4o-2024-11-20");
+// 全局变量，将在 fetch 函数中设置
+// 使用 any 类型是因为 Workers AI 和 ai-sdk 的类型系统不完全兼容
+let model: any;
 // Cloudflare AI Gateway
 // const openai = createOpenAI({
 //   apiKey: env.OPENAI_API_KEY,
@@ -57,7 +59,7 @@ export class Chat extends AIChatAgent<Env> {
           executions
         });
 
-        // Stream the AI response using GPT-4
+        // Stream the AI response using Workers AI
         const result = streamText({
           model,
           system: `You are a helpful assistant that can do various tasks... 
@@ -107,17 +109,26 @@ export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext) {
     const url = new URL(request.url);
 
+    // 初始化 Workers AI 实例
+    if (!model) {
+      const workersai = createWorkersAI({ binding: env.AI });
+      model = workersai("@cf/deepseek-ai/deepseek-r1-distill-qwen-32b");
+    }
+
     if (url.pathname === "/check-open-ai-key") {
-      const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
+      // 检查 Workers AI 绑定是否可用
+      const hasWorkersAI = !!env.AI;
       return Response.json({
-        success: hasOpenAIKey
+        success: hasWorkersAI
       });
     }
-    if (!process.env.OPENAI_API_KEY) {
+
+    if (!env.AI) {
       console.error(
-        "OPENAI_API_KEY is not set, don't forget to set it locally in .dev.vars, and use `wrangler secret bulk .dev.vars` to upload it to production"
+        "Workers AI binding is not configured. Please ensure the AI binding is set in your wrangler.toml"
       );
     }
+
     return (
       // Route the request to our agent or return 404 if not found
       (await routeAgentRequest(request, env)) ||
