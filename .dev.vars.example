@@ -1,3 +1,11 @@
-OPENAI_API_KEY=sk-proj-1234567890
-# Optional - Cloudflare AI Gateway https://developers.cloudflare.com/ai-gateway/
-# GATEWAY_BASE_URL=https://gateway.ai.cloudflare.com/v1/..
+# AI Gateway 配置示例
+# 请将以下值替换为您的实际配置
+
+# DeepSeek API 令牌
+DEEPSEEK_TOKEN=your_deepseek_api_token_here
+
+# Cloudflare AI Gateway 账户 ID
+AI_GATEWAY_ACCOUNT_ID=your_cloudflare_account_id_here
+
+# Cloudflare AI Gateway 网关 ID
+AI_GATEWAY_ID=your_gateway_id_here

@@ -10,19 +10,13 @@ import {
   type StreamTextOnFinishCallback,
   type ToolSet
 } from "ai";
-import { createWorkersAI } from "workers-ai-provider";
+import { createOpenAI } from "@ai-sdk/openai";
 import { processToolCalls } from "./utils";
 import { tools, executions } from "./tools";
 // import { env } from "cloudflare:workers";
 
 // 全局变量，将在 fetch 函数中设置
-// 使用 any 类型是因为 Workers AI 和 ai-sdk 的类型系统不完全兼容
 let model: any;
-// Cloudflare AI Gateway
-// const openai = createOpenAI({
-//   apiKey: env.OPENAI_API_KEY,
-//   baseURL: env.GATEWAY_BASE_URL,
-// });
 
 /**
  * Chat Agent implementation that handles real-time AI chat interactions
@@ -59,7 +53,7 @@ export class Chat extends AIChatAgent<Env> {
           executions
         });
 
-        // Stream the AI response using Workers AI
+        // Stream the AI response using AI Gateway
         const result = streamText({
           model,
           system: `You are a helpful assistant that can do various tasks... 
@@ -109,23 +103,36 @@ export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext) {
     const url = new URL(request.url);
 
-    // 初始化 Workers AI 实例
+    // 初始化 AI Gateway 模型
     if (!model) {
-      const workersai = createWorkersAI({ binding: env.AI });
-      model = workersai("@cf/deepseek-ai/deepseek-r1-distill-qwen-32b");
+      const openai = createOpenAI({
+        baseURL: `https://gateway.ai.cloudflare.com/v1/${env.AI_GATEWAY_ACCOUNT_ID}/${env.AI_GATEWAY_ID}/deepseek`,
+        headers: {
+          Authorization: `Bearer ${env.DEEPSEEK_TOKEN}`
+        }
+      });
+      model = openai("deepseek/deepseek-chat");
     }
 
     if (url.pathname === "/check-open-ai-key") {
-      // 检查 Workers AI 绑定是否可用
-      const hasWorkersAI = !!env.AI;
+      // 检查 AI Gateway 配置是否可用
+      const hasAIGateway = !!(
+        env.DEEPSEEK_TOKEN &&
+        env.AI_GATEWAY_ACCOUNT_ID &&
+        env.AI_GATEWAY_ID
+      );
       return Response.json({
-        success: hasWorkersAI
+        success: hasAIGateway
       });
     }
 
-    if (!env.AI) {
+    if (
+      !env.DEEPSEEK_TOKEN ||
+      !env.AI_GATEWAY_ACCOUNT_ID ||
+      !env.AI_GATEWAY_ID
+    ) {
       console.error(
-        "Workers AI binding is not configured. Please ensure the AI binding is set in your wrangler.toml"
+        "AI Gateway configuration is incomplete. Please ensure DEEPSEEK_TOKEN, AI_GATEWAY_ACCOUNT_ID, and AI_GATEWAY_ID are set in your wrangler.toml"
       );
     }
 
