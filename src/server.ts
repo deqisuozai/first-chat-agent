@@ -101,15 +101,21 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
 
           console.log("AI Gateway response received:", chatCompletion);
           
-          // 将响应写入数据流 - 使用 ai-sdk 标准格式
+          // 将响应写入数据流 - 使用 Agents 框架格式
           const response = chatCompletion.choices[0]?.message?.content || "No response";
           console.log("Writing response to dataStream:", response);
           
-          // 写入文本块
+          // 使用 Agents 框架期望的格式：直接写入文本内容
           dataStream.write(`0:${response}\n`);
           
           // 写入完成标记
           dataStream.write(`8:\n`);
+          
+          // 调试：记录发送的数据流
+          console.log("Sent dataStream chunks:", [
+            `0:${response}`,
+            '8:'
+          ]);
           
           // 调用完成回调
           onFinish({
