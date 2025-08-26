@@ -27,6 +27,23 @@ let model: any;
  * Chat Agent implementation that handles real-time AI chat interactions
  */
 export class Chat extends AIChatAgent<Env> {
+  private model: OpenAI | null = null;
+
+  /**
+   * 初始化 AI Gateway 模型
+   */
+  private async initModel() {
+    if (!this.model) {
+      // 从环境变量获取配置
+      const env = this.env as any;
+      this.model = new OpenAI({
+        apiKey: env.DEEPSEEK_TOKEN,
+        baseURL: `https://gateway.ai.cloudflare.com/v1/${env.AI_GATEWAY_ACCOUNT_ID}/${env.AI_GATEWAY_ID}/deepseek`
+      });
+    }
+    return this.model;
+  }
+
   /**
    * Handles incoming chat messages and manages the response stream
    * @param onFinish - Callback function executed when streaming completes
@@ -63,7 +80,8 @@ export class Chat extends AIChatAgent<Env> {
           console.log("Starting AI Gateway request...");
           console.log("Messages:", processedMessages);
           
-          const chatCompletion = await model.chat.completions.create({
+          const aiModel = await this.initModel();
+          const chatCompletion = await aiModel.chat.completions.create({
             model: "deepseek-chat",
             messages: [
               {
@@ -75,7 +93,7 @@ ${unstable_getSchedulePrompt({ date: new Date() })}
 If the user asks to schedule a task, use the schedule tool to schedule the task.`
               },
               ...processedMessages.map(msg => ({
-                role: msg.role,
+                role: msg.role as "user" | "assistant" | "system",
                 content: msg.content
               }))
             ]
@@ -97,7 +115,11 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
         } catch (error) {
           console.error("Error while streaming:", error);
           console.error("Model:", model);
-          console.error("Environment variables check failed - env not available in Chat class");
+          console.error("Error details:", {
+            name: error instanceof Error ? error.name : 'Unknown',
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : 'No stack trace'
+          });
         }
       }
     });
