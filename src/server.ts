@@ -60,6 +60,9 @@ export class Chat extends AIChatAgent<Env> {
 
         // Stream the AI response using AI Gateway
         try {
+          console.log("Starting AI Gateway request...");
+          console.log("Messages:", processedMessages);
+          
           const chatCompletion = await model.chat.completions.create({
             model: "deepseek-chat",
             messages: [
@@ -78,8 +81,11 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
             ]
           });
 
+          console.log("AI Gateway response received:", chatCompletion);
+          
           // 将响应写入数据流
           const response = chatCompletion.choices[0]?.message?.content || "No response";
+          console.log("Writing response to dataStream:", response);
           dataStream.write(`0:${response}\n`);
           
           // 调用完成回调
@@ -91,6 +97,7 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
         } catch (error) {
           console.error("Error while streaming:", error);
           console.error("Model:", model);
+          console.error("Environment variables check failed - env not available in Chat class");
         }
       }
     });
