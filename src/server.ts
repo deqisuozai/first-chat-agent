@@ -10,7 +10,7 @@ import {
   type StreamTextOnFinishCallback,
   type ToolSet
 } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
+import OpenAI from 'openai';
 
 import { processToolCalls } from "./utils";
 import { tools, executions } from "./tools";
@@ -59,31 +59,39 @@ export class Chat extends AIChatAgent<Env> {
         });
 
         // Stream the AI response using AI Gateway
-        const result = streamText({
-          model,
-          system: `You are a helpful assistant that can do various tasks... 
+        try {
+          const chatCompletion = await model.chat.completions.create({
+            model: "deepseek-chat",
+            messages: [
+              {
+                role: "system",
+                content: `You are a helpful assistant that can do various tasks... 
 
 ${unstable_getSchedulePrompt({ date: new Date() })}
 
-If the user asks to schedule a task, use the schedule tool to schedule the task.
-`,
-          messages: processedMessages,
-          tools: allTools,
-          onFinish: async (args) => {
-            onFinish(
-              args as Parameters<StreamTextOnFinishCallback<ToolSet>>[0]
-            );
-            // await this.mcp.closeConnection(mcpConnection.id);
-          },
-          onError: (error) => {
-            console.error("Error while streaming:", error);
-            console.error("Model:", model);
-          },
-          maxSteps: 10
-        });
+If the user asks to schedule a task, use the schedule tool to schedule the task.`
+              },
+              ...processedMessages.map(msg => ({
+                role: msg.role,
+                content: msg.content
+              }))
+            ]
+          });
 
-        // Merge the AI response stream with tool execution outputs
-        result.mergeIntoDataStream(dataStream);
+          // 将响应写入数据流
+          const response = chatCompletion.choices[0]?.message?.content || "No response";
+          dataStream.write(`0:${response}\n`);
+          
+          // 调用完成回调
+          onFinish({
+            finishReason: 'stop',
+            usage: chatCompletion.usage
+          } as any);
+          
+        } catch (error) {
+          console.error("Error while streaming:", error);
+          console.error("Model:", model);
+        }
       }
     });
 
@@ -111,15 +119,10 @@ export default {
 
     // 初始化 AI Gateway 模型
     if (!model) {
-
-      
-      const openai = createOpenAI({
-        baseURL: `https://gateway.ai.cloudflare.com/v1/${env.AI_GATEWAY_ACCOUNT_ID}/${env.AI_GATEWAY_ID}/deepseek`,
-        headers: {
-          Authorization: `Bearer ${env.DEEPSEEK_TOKEN}`
-        }
+      model = new OpenAI({
+        apiKey: env.DEEPSEEK_TOKEN,
+        baseURL: `https://gateway.ai.cloudflare.com/v1/${env.AI_GATEWAY_ACCOUNT_ID}/${env.AI_GATEWAY_ID}/deepseek`
       });
-      model = openai("deepseek/deepseek-chat");
     }
 
     if (url.pathname === "/check-open-ai-key") {
