@@ -77,6 +77,7 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
           },
           onError: (error) => {
             console.error("Error while streaming:", error);
+            console.error("Model:", model);
           },
           maxSteps: 10
         });
@@ -110,6 +111,8 @@ export default {
 
     // 初始化 AI Gateway 模型
     if (!model) {
+
+      
       const openai = createOpenAI({
         baseURL: `https://gateway.ai.cloudflare.com/v1/${env.AI_GATEWAY_ACCOUNT_ID}/${env.AI_GATEWAY_ID}/deepseek`,
         headers: {
