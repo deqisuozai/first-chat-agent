@@ -11,12 +11,17 @@ import {
   type ToolSet
 } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
+
 import { processToolCalls } from "./utils";
 import { tools, executions } from "./tools";
 // import { env } from "cloudflare:workers";
 
 // 全局变量，将在 fetch 函数中设置
 let model: any;
+// const openai = createOpenAI({
+//   apiKey: env.OPENAI_API_KEY,
+//   baseURL: env.GATEWAY_BASE_URL,
+// });
 
 /**
  * Chat Agent implementation that handles real-time AI chat interactions
@@ -135,7 +140,6 @@ export default {
         "AI Gateway configuration is incomplete. Please ensure DEEPSEEK_TOKEN, AI_GATEWAY_ACCOUNT_ID, and AI_GATEWAY_ID are set in your wrangler.toml"
       );
     }
-
     return (
       // Route the request to our agent or return 404 if not found
       (await routeAgentRequest(request, env)) ||

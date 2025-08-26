@@ -4,10 +4,13 @@
   "main": "src/server.ts",
   "compatibility_date": "2025-08-03",
   "compatibility_flags": ["nodejs_compat"],
+
+
   "vars": {
     "AI_GATEWAY_ACCOUNT_ID": "12756ebe4e25332254c94e70905476e6",
     "AI_GATEWAY_ID": "dev_gatewary"
   },
+
   "assets": {
     "directory": "public"
   },
