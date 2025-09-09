@@ -14,7 +14,6 @@ import { AIChatAgent } from "agents/ai-chat-agent";
 import {
   createDataStreamResponse,
   generateId,
-  streamText,
   type StreamTextOnFinishCallback,
   type ToolSet
 } from "ai";
@@ -122,8 +121,8 @@ export class Chat extends AIChatAgent<Env> {
           // 初始化 AI 模型
           const aiModel = await this.initModel();
           
-          // 调用 DeepSeek 模型生成回复
-          const chatCompletion = await aiModel.chat.completions.create({
+          // 调用 DeepSeek 模型生成流式回复
+          const stream = await aiModel.chat.completions.create({
             model: "deepseek-chat",  // 使用 DeepSeek 聊天模型
             messages: [
               {
@@ -139,29 +138,40 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
                 role: msg.role as "user" | "assistant" | "system",
                 content: msg.content
               }))
-            ]
+            ],
+            stream: true  // 启用流式传输
           });
 
-          console.log("AI Gateway response received:", chatCompletion);
-          
-          // 将 AI 响应写入数据流
-          // 使用正确的 Agents 框架格式
-          const response = chatCompletion.choices[0]?.message?.content || "No response";
-          console.log("Writing response to dataStream:", response);
-          
-          // 使用 formatDataStreamPart 格式化数据流
-          // 这是 Agents 框架期望的格式
-          dataStream.write(
-            formatDataStreamPart("text", response)
-          );
-          
-          // 调试：记录发送的数据流
-          console.log("Sent dataStream chunk:", formatDataStreamPart("text", response));
+          console.log("AI Gateway stream started");
+
+          // 处理流式响应
+          let fullResponse = "";
+          let usage = null;
+
+          for await (const chunk of stream) {
+            const content = chunk.choices[0]?.delta?.content;
+            if (content) {
+              fullResponse += content;
+              console.log("Streaming chunk:", content);
+              
+              // 实时写入数据流
+              dataStream.write(
+                formatDataStreamPart("text", content)
+              );
+            }
+
+            // 收集使用统计信息
+            if (chunk.usage) {
+              usage = chunk.usage;
+            }
+          }
+
+          console.log("AI Gateway stream completed. Full response:", fullResponse);
           
           // 调用完成回调，通知前端流式传输已完成
           onFinish({
             finishReason: 'stop',  // 完成原因：正常停止
-            usage: chatCompletion.usage  // 使用统计信息
+            usage: usage  // 使用统计信息
           } as any);
           
         } catch (error) {
