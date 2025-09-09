@@ -14,22 +14,22 @@ import { AIChatAgent } from "agents/ai-chat-agent";
 import {
   createDataStreamResponse,
   generateId,
+  streamText,
   type StreamTextOnFinishCallback,
   type ToolSet
 } from "ai";
 
-// 导入 OpenAI 官方 SDK
-import OpenAI from 'openai';
+// AI SDK 的 OpenAI 提供商已在下面导入
 
 // 导入项目内部工具和工具函数
 import { processToolCalls } from "./utils";
 import { tools, executions } from "./tools";
+import { createOpenAI } from "@ai-sdk/openai";
 import { formatDataStreamPart } from "@ai-sdk/ui-utils";
 // import { env } from "cloudflare:workers";
 
-// 全局变量，用于存储 AI 模型实例
-// 这个变量将在 fetch 函数中初始化，供 Chat 类使用
-let model: any;
+// 注释掉的全局模型变量，现在直接在 Chat 类中初始化
+// let model: any;
 // const openai = createOpenAI({
 //   apiKey: env.OPENAI_API_KEY,
 //   baseURL: env.GATEWAY_BASE_URL,
@@ -46,29 +46,29 @@ let model: any;
  * 4. 管理对话状态
  */
 export class Chat extends AIChatAgent<Env> {
-  // 私有属性：存储 OpenAI 模型实例
-  private model: OpenAI | null = null;
+  // 私有属性：存储 AI SDK OpenAI 客户端实例
+  private openaiClient: any = null;
 
   /**
-   * 初始化 AI Gateway 模型
+   * 初始化 AI SDK OpenAI 客户端
    * 
-   * 这个方法负责创建和配置 OpenAI 客户端，连接到 Cloudflare AI Gateway
+   * 这个方法负责创建和配置 AI SDK 的 OpenAI 客户端，连接到 Cloudflare AI Gateway
    * 使用 DeepSeek 模型作为 AI 提供商
    * 
-   * @returns {Promise<OpenAI>} 配置好的 OpenAI 客户端实例
+   * @returns 配置好的 AI SDK OpenAI 客户端实例
    */
-  private async initModel() {
-    if (!this.model) {
+  private async initOpenAIClient() {
+    if (!this.openaiClient) {
       // 从环境变量获取配置信息
       const env = this.env as any;
       
-      // 创建 OpenAI 客户端实例，配置 AI Gateway 作为基础 URL
-      this.model = new OpenAI({
+      // 创建 AI SDK 的 OpenAI 客户端实例，配置 AI Gateway 作为基础 URL
+      this.openaiClient = createOpenAI({
         apiKey: env.DEEPSEEK_TOKEN,  // DeepSeek API 密钥
         baseURL: `https://gateway.ai.cloudflare.com/v1/${env.AI_GATEWAY_ACCOUNT_ID}/${env.AI_GATEWAY_ID}/deepseek`
       });
     }
-    return this.model;
+    return this.openaiClient;
   }
 
   /**
@@ -113,76 +113,36 @@ export class Chat extends AIChatAgent<Env> {
           executions               // 工具执行函数
         });
 
-        // 使用 AI Gateway 流式传输 AI 响应
-        try {
-          console.log("Starting AI Gateway request...");
-          console.log("Messages:", processedMessages);
-          
-          // 初始化 AI 模型
-          const aiModel = await this.initModel();
-          
-          // 调用 DeepSeek 模型生成流式回复
-          const stream = await aiModel.chat.completions.create({
-            model: "deepseek-chat",  // 使用 DeepSeek 聊天模型
-            messages: [
-              {
-                role: "system",
-                content: `You are a helpful assistant that can do various tasks... 
+        // 初始化 AI SDK OpenAI 客户端
+        const openai = await this.initOpenAIClient();
+
+        // 使用 AI SDK 的 streamText 方法实现流式传输
+        // 这是官方推荐的标准实现方式
+        const stream = streamText({
+          model: openai("deepseek-chat"),  // 使用 DeepSeek 聊天模型
+          system: `You are a helpful assistant that can do various tasks... 
 
 ${unstable_getSchedulePrompt({ date: new Date() })}
 
-If the user asks to schedule a task, use the schedule tool to schedule the task.`
-              },
-              // 将处理后的消息转换为 OpenAI 格式
-              ...processedMessages.map(msg => ({
-                role: msg.role as "user" | "assistant" | "system",
-                content: msg.content
-              }))
-            ],
-            stream: true  // 启用流式传输
-          });
+If the user asks to schedule a task, use the schedule tool to schedule the task.`,
+          messages: processedMessages.map(msg => ({
+            role: msg.role as "user" | "assistant" | "system",
+            content: msg.content
+          })),
+          tools: allTools,  // 提供工具给 AI 使用
+          maxSteps: 5,      // 最大执行步数，防止无限循环
+          onFinish: (result) => {
+            // 处理完成回调
+            console.log("Stream completed:", result);
+            onFinish(result as any);
+          },
+        });
 
-          console.log("AI Gateway stream started");
-
-          // 处理流式响应
-          let fullResponse = "";
-          let usage = null;
-
-          for await (const chunk of stream) {
-            const content = chunk.choices[0]?.delta?.content;
-            if (content) {
-              fullResponse += content;
-              console.log("Streaming chunk:", content);
-              
-              // 实时写入数据流
-              dataStream.write(
-                formatDataStreamPart("text", content)
-              );
-            }
-
-            // 收集使用统计信息
-            if (chunk.usage) {
-              usage = chunk.usage;
-            }
-          }
-
-          console.log("AI Gateway stream completed. Full response:", fullResponse);
-          
-          // 调用完成回调，通知前端流式传输已完成
-          onFinish({
-            finishReason: 'stop',  // 完成原因：正常停止
-            usage: usage  // 使用统计信息
-          } as any);
-          
-        } catch (error) {
-          // 错误处理：记录详细的错误信息
-          console.error("Error while streaming:", error);
-          console.error("Model:", model);
-          console.error("Error details:", {
-            name: error instanceof Error ? error.name : 'Unknown',
-            message: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : 'No stack trace'
-          });
+        // 将 streamText 的结果写入数据流
+        for await (const chunk of stream.textStream) {
+          dataStream.write(
+            formatDataStreamPart("text", chunk)
+          );
         }
       }
     });
@@ -234,14 +194,8 @@ export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext) {
     const url = new URL(request.url);
 
-    // 初始化 AI Gateway 模型（全局单例）
-    // 只有在第一次请求时才初始化，后续请求复用同一个实例
-    if (!model) {
-      model = new OpenAI({
-        apiKey: env.DEEPSEEK_TOKEN,  // DeepSeek API 密钥
-        baseURL: `https://gateway.ai.cloudflare.com/v1/${env.AI_GATEWAY_ACCOUNT_ID}/${env.AI_GATEWAY_ID}/deepseek`
-      });
-    }
+    // AI 模型现在直接在 Chat 类中初始化
+    // 不再需要全局模型实例
 
     // 健康检查端点
     // 前端会调用这个端点来检查 AI Gateway 配置是否正确
