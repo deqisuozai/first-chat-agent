@@ -1,5 +1,20 @@
-// Approval string to be shared across frontend and backend
+/**
+ * 共享常量定义文件
+ * 
+ * 这个文件包含在前端和后端之间共享的常量
+ * 确保两端使用相同的值，避免硬编码和类型不匹配
+ */
+
+/**
+ * 用户确认状态常量
+ * 
+ * 这些常量用于工具调用的人机交互循环
+ * 当 AI 调用需要确认的工具时，用户可以选择确认或拒绝
+ * 
+ * 使用 as const 确保这些值被推断为字面量类型而不是 string 类型
+ * 这样可以提供更好的类型安全
+ */
 export const APPROVAL = {
-  YES: "Yes, confirmed.",
-  NO: "No, denied."
+  YES: "Yes, confirmed.",  // 用户确认执行工具
+  NO: "No, denied."        // 用户拒绝执行工具
 } as const;

@@ -1,51 +1,91 @@
+/**
+ * 聊天应用的主界面组件
+ * 
+ * 这是整个聊天应用的前端核心，负责：
+ * 1. 渲染聊天界面
+ * 2. 处理用户输入
+ * 3. 显示 AI 回复
+ * 4. 管理工具调用确认
+ * 5. 提供主题切换和调试功能
+ */
+
+// React 核心 hooks
 import { useEffect, useState, useRef, useCallback, use } from "react";
-import { useAgent } from "agents/react";
-import { useAgentChat } from "agents/ai-react";
-import type { Message } from "@ai-sdk/react";
-import type { tools } from "./tools";
 
-// Component imports
-import { Button } from "@/components/button/Button";
-import { Card } from "@/components/card/Card";
-import { Avatar } from "@/components/avatar/Avatar";
-import { Toggle } from "@/components/toggle/Toggle";
-import { Textarea } from "@/components/textarea/Textarea";
-import { MemoizedMarkdown } from "@/components/memoized-markdown";
-import { ToolInvocationCard } from "@/components/tool-invocation-card/ToolInvocationCard";
+// Cloudflare Agents 框架的 React hooks
+import { useAgent } from "agents/react";        // Agent 管理
+import { useAgentChat } from "agents/ai-react"; // 聊天功能
 
-// Icon imports
+// AI SDK 的类型定义
+import type { Message } from "@ai-sdk/react";   // 消息类型
+import type { tools } from "./tools";           // 工具类型
+
+// UI 组件导入
+import { Button } from "@/components/button/Button";                    // 按钮组件
+import { Card } from "@/components/card/Card";                        // 卡片组件
+import { Avatar } from "@/components/avatar/Avatar";                  // 头像组件
+import { Toggle } from "@/components/toggle/Toggle";                  // 开关组件
+import { Textarea } from "@/components/textarea/Textarea";            // 文本区域组件
+import { MemoizedMarkdown } from "@/components/memoized-markdown";    // Markdown 渲染组件
+import { ToolInvocationCard } from "@/components/tool-invocation-card/ToolInvocationCard"; // 工具调用卡片
+
+// 图标导入
 import {
-  Bug,
-  Moon,
-  Robot,
-  Sun,
-  Trash,
-  PaperPlaneTilt,
-  Stop
+  Bug,              // 调试图标
+  Moon,             // 月亮图标（深色主题）
+  Robot,            // 机器人图标
+  Sun,              // 太阳图标（浅色主题）
+  Trash,            // 删除图标
+  PaperPlaneTilt,   // 发送图标
+  Stop              // 停止图标
 } from "@phosphor-icons/react";
 
-// List of tools that require human confirmation
-// NOTE: this should match the keys in the executions object in tools.ts
+/**
+ * 需要人工确认的工具列表
+ * 
+ * 这些工具在执行前需要用户确认，用于安全控制
+ * 注意：这个数组的键必须与 tools.ts 中 executions 对象的键匹配
+ */
 const toolsRequiringConfirmation: (keyof typeof tools)[] = [
-  "getWeatherInformation"
+  "getWeatherInformation"  // 获取天气信息工具
 ];
 
+/**
+ * 聊天应用的主组件
+ * 
+ * 这是整个聊天界面的根组件，管理所有状态和用户交互
+ */
 export default function Chat() {
+  // 主题状态管理
+  // 从 localStorage 读取保存的主题设置，默认为深色主题
   const [theme, setTheme] = useState<"dark" | "light">(() => {
-    // Check localStorage first, default to dark if not found
     const savedTheme = localStorage.getItem("theme");
     return (savedTheme as "dark" | "light") || "dark";
   });
+
+  // 调试模式状态
   const [showDebug, setShowDebug] = useState(false);
+  
+  // 文本区域高度状态（用于自动调整输入框高度）
   const [textareaHeight, setTextareaHeight] = useState("auto");
+  
+  // 消息列表底部的引用，用于自动滚动
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  /**
+   * 滚动到消息列表底部的回调函数
+   * 使用 useCallback 优化性能，避免不必要的重新渲染
+   */
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
+  /**
+   * 主题切换效果
+   * 当主题状态改变时，更新 DOM 类名并保存到 localStorage
+   */
   useEffect(() => {
-    // Apply theme class on mount and when theme changes
+    // 根据主题状态添加或移除相应的 CSS 类
     if (theme === "dark") {
       document.documentElement.classList.add("dark");
       document.documentElement.classList.remove("light");
@@ -54,54 +94,82 @@ export default function Chat() {
       document.documentElement.classList.add("light");
     }
 
-    // Save theme preference to localStorage
+    // 将主题偏好保存到 localStorage，以便下次访问时恢复
     localStorage.setItem("theme", theme);
   }, [theme]);
 
-  // Scroll to bottom on mount
+  /**
+   * 组件挂载时自动滚动到底部
+   */
   useEffect(() => {
     scrollToBottom();
   }, [scrollToBottom]);
 
+  /**
+   * 切换主题的函数
+   * 在深色和浅色主题之间切换
+   */
   const toggleTheme = () => {
     const newTheme = theme === "dark" ? "light" : "dark";
     setTheme(newTheme);
   };
 
+  /**
+   * 初始化 Agent
+   * 使用 Cloudflare Agents 框架创建聊天代理
+   */
   const agent = useAgent({
-    agent: "chat"
+    agent: "chat"  // 指定使用 "chat" 类型的代理
   });
 
+  /**
+   * 使用 Agent 聊天功能
+   * 这个 hook 提供了完整的聊天功能，包括消息管理、输入处理等
+   */
   const {
-    messages: agentMessages,
-    input: agentInput,
-    handleInputChange: handleAgentInputChange,
-    handleSubmit: handleAgentSubmit,
-    addToolResult,
-    clearHistory,
-    isLoading,
-    stop
+    messages: agentMessages,                    // 消息列表
+    input: agentInput,                         // 当前输入内容
+    handleInputChange: handleAgentInputChange, // 输入变化处理函数
+    handleSubmit: handleAgentSubmit,           // 提交处理函数
+    addToolResult,                             // 添加工具结果
+    clearHistory,                              // 清空历史记录
+    isLoading,                                 // 加载状态
+    stop                                       // 停止生成
   } = useAgentChat({
-    agent,
-    maxSteps: 5
+    agent,        // 传入的代理实例
+    maxSteps: 5   // 最大执行步数，防止无限循环
   });
 
-  // Scroll to bottom when messages change
+  /**
+   * 当消息列表变化时自动滚动到底部
+   * 确保用户总是看到最新的消息
+   */
   useEffect(() => {
     agentMessages.length > 0 && scrollToBottom();
   }, [agentMessages, scrollToBottom]);
 
+  /**
+   * 检查是否有待确认的工具调用
+   * 这些工具需要用户手动确认才能执行
+   */
   const pendingToolCallConfirmation = agentMessages.some((m: Message) =>
     m.parts?.some(
       (part) =>
-        part.type === "tool-invocation" &&
-        part.toolInvocation.state === "call" &&
-        toolsRequiringConfirmation.includes(
+        part.type === "tool-invocation" &&  // 是工具调用类型
+        part.toolInvocation.state === "call" &&  // 状态为调用中
+        toolsRequiringConfirmation.includes(  // 在需要确认的工具列表中
           part.toolInvocation.toolName as keyof typeof tools
         )
     )
   );
 
+  /**
+   * 格式化时间显示
+   * 将 Date 对象格式化为 HH:MM 格式
+   * 
+   * @param date - 要格式化的日期对象
+   * @returns 格式化后的时间字符串
+   */
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
